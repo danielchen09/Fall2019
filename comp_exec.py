@@ -2,28 +2,93 @@ import pygame
 from random import randint
 from paddle import Paddle
 from ball import Ball
+import numpy as np
 import ai
 
+class Model:
+    def __init__(self, w1=None, w2=None):
+        self.inputSize = 4
+        self.hiddenSize = 10
+        self.outputSize = 1
+        self.score = 0
+        
+        if w1 == None or w2 == None:
+            self.w1 = np.random.rand(self.hiddenSize, self.inputSize);
+            self.w2 = np.random.rand(self.outputSize, self.hiddenSize)
+        else:
+            self.w1 = w1
+            self.w2 = w2
+        
+    def getAction(self, rgb, paddleA, paddleB, ball, reward, done):
+        input = np.array([paddleA.y, paddleB.y, ball.y, ball.x]).reshape(-1, 1)
+        hidden_out = self.relu(self.w1 @ input)
+        out = self.sigmoid(self.w2 @ hidden_out)
+        return out
+        
+    def sigmoid(self, x):
+        return 1.0/(1+np.exp(-1*x))
+
+    def relu(self, vector):
+        vector[vector < 0] = 0
+        return vector
+        
 
 class Game():
     def __init__(self, fA, fB, user):
         self.fA = fA        # First program's "getAction" function
         self.fB = fB        # Second program's " "
         self.user = user    # Boolean indicating whether or not to get user input
+        self.draw = True
+        self.maxScore = 3
+
+        self.modelSize = 2
+        self.models = [Model()] * self.modelSize
+        self.current = 0
+        self.epochs = 1
+
+    def selection(self):
+        return sorted(self.models, key=(lambda m : m.score))[-2:]
+
+    def crossOverWeight(self, w1, w2):
+        cut = w1.shape[1]//2
+        temp = np.array(w1[:, :,cut], copy=True)
+        w1[:, :cut] = w2[:, :cut]
+        w2[:, :cut] = temp
+
+        return w1, w2
+
+    def mutateWeight(self, rate, w):
+        mask = np.random.randint(0, 2, size=w.shape).astype(np.bool)
+        rand = np.random.rand(*w.shape)*np.max(w.shape)*rate
+        w[mask] = rand[mask]
+
+        return w
+
+
 
     def runComp(self):
-        self.reset()
+        for epoch in range(self.epochs * self.modelSize):
+            self.reset()
         
-        pygame.init()
-        pygame.display.set_caption("Pong Competition")
-        
-        while not self.done:
-            self.step()
-        pygame.quit()
-        print("%s wins!" % self.winner)
+            pygame.init()
+            pygame.display.set_caption("Pong Competition")
 
-        pygame.quit()
+            last = 0
+            while not self.done:
+                if self.scoreB + self.scoreA != last:
+                    last = self.scoreB + self.scoreA
+                    print(self.scoreB + self.scoreA)
+                self.step()
 
+            self.models[self.current].score = self.scoreB
+            pygame.quit()
+            print("%s wins!" % self.winner)
+
+            self.current += 1
+            if self.current == self.modelSize:
+                for model in self.models:
+                    print(model.score)
+                self.current = 0
     def step(self):        
         self.reward = 0
 
@@ -35,8 +100,8 @@ class Game():
                     if event.key==pygame.K_x: #Pressing the x Key will quit the game
                          self.done=True
 
-        if self.scoreA == 21 or self.scoreB == 21:
-            self.winner = "Player A" if self.scoreA == 21 else "Player B"
+        if self.scoreA == self.maxScore or self.scoreB == self.maxScore:
+            self.winner = "Player A" if self.scoreA == self.maxScore else "Player B"
             self.done = True
 
         # Getting screen pixels
@@ -58,7 +123,7 @@ class Game():
                 self.paddleB.moveDown(10)
         # If two programs playing against each other
         else:
-            actionB = self.fB(info)
+            actionB = self.models[self.current].getAction(*info)
             self.paddleB.moveUp(actionB)
             #print(actionB)
 
@@ -89,19 +154,21 @@ class Game():
         #Detect collisions between the ball and the paddles
         if pygame.sprite.collide_mask(self.ball, self.paddleA) or pygame.sprite.collide_mask(self.ball, self.paddleB):
             self.ball.bounce()
-        # --- Drawing code should go here
-        # First, clear the screen to BLACK.
-        self.screen.fill(self.BLACK)
-        #Draw the net
-        pygame.draw.line(self.screen, self.WHITE, [0, 100], [500, 100], 10)
-        #Now let's draw all the sprites in one go. (For now we only have 2 sprites!)
-        self.all_sprites_list.draw(self.screen)
-        #Display scores:
-        font = pygame.font.Font(None, 74)
-        text = font.render(str(self.scoreA), 1, self.WHITE)
-        self.screen.blit(text, (125,10))
-        text = font.render(str(self.scoreB), 1, self.WHITE)
-        self.screen.blit(text, (375,10))
+
+        if self.draw:
+            # --- Drawing code should go here
+            # First, clear the screen to BLACK.
+            self.screen.fill(self.BLACK)
+            #Draw the net
+            pygame.draw.line(self.screen, self.WHITE, [0, 100], [500, 100], 10)
+            #Now let's draw all the sprites in one go. (For now we only have 2 sprites!)
+            self.all_sprites_list.draw(self.screen)
+            #Display scores:
+            font = pygame.font.Font(None, 74)
+            text = font.render(str(self.scoreA), 1, self.WHITE)
+            self.screen.blit(text, (125,10))
+            text = font.render(str(self.scoreB), 1, self.WHITE)
+            self.screen.blit(text, (375,10))
 
         pygame.display.flip()
         return info
@@ -134,5 +201,7 @@ class Game():
         rgbarray = pygame.surfarray.array3d(pygame.display.get_surface())
         info = [rgbarray, self.paddleA.rect, self.paddleB.rect, self.ball.rect, 0, self.done]
 
-        
+m = Model()
+g = Game(ai.getAction, m.getAction, False)
+g.runComp()  
 
