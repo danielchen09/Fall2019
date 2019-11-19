@@ -42,7 +42,7 @@ class Game():
         self.draw = True
         self.maxScore = 10
 
-        self.mutateRate = 0.01
+        self.mutateRate = 1e-5
         self.modelSize = 5
         self.models = [Model() for i in range(self.modelSize)]
         self.current = 0
