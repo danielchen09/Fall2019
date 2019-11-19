@@ -24,7 +24,6 @@ class Model:
         hidden_out = self.relu(self.w1 @ input)
         out = self.sigmoid(self.w2 @ hidden_out)
         out = 5 * (-1 if np.random.uniform(0, 1) > out[0, 0] else 1)
-        print(out)
         return out
 
     def sigmoid(self, x):
