@@ -21,8 +21,8 @@ class Model:
 
     def getAction(self, rgb, paddleA, paddleB, ball, reward, done):
         input = np.array([paddleA.y, paddleB.y, ball.y, ball.x]).reshape(-1, 1)
-        hidden_out = self.relu(self.w1 @ input)
-        out = self.sigmoid(self.w2 @ hidden_out)
+        hidden_out = self.relu(self.w1.dot(input))
+        out = self.sigmoid(self.w2.dot(hidden_out))
         out = 5 * (-1 if np.random.uniform(0, 1) > out[0, 0] else 1)
         return out
 
@@ -42,11 +42,11 @@ class Game():
         self.draw = True
         self.maxScore = 10
 
+        self.mutateRate = 0.01
         self.modelSize = 5
         self.models = [Model() for i in range(self.modelSize)]
         self.current = 0
         self.epochs = 200
-        self.mutateRate = 0.01
 
     def saveWeight(self, w, name):
         np.savetxt(name + ".txt", w)
@@ -58,19 +58,19 @@ class Game():
         return sorted(self.models, key=(lambda m : m.score), reverse=True)[:2]
 
     def crossOverWeight(self, w1, w2):
-        cut = w1.shape[1]//2
-        temp = np.array(w1[:, :cut], copy=True)
-        w1[:, :cut] = w2[:, :cut]
-        w2[:, :cut] = temp
+        mask = np.random.randint(0, 2, size=(w1.shape)).astype(np.bool)
+        temp = np.array(w1[mask], copy=True)
+        w1[mask] = w2[mask]
+        w2[mask] = temp
 
-        return w1, w2
+        return np.array(w1, copy=True), np.array(w2, copy=True)
 
     def mutateWeight(self, w):
         mask = np.random.randint(0, 2, size=w.shape).astype(np.bool)
         rand = np.random.uniform(-0.1, 0.1, w.shape)*self.mutateRate
         w[mask] = rand[mask]
 
-        return w
+        return np.array(w, copy=True)
 
 
 
@@ -94,14 +94,15 @@ class Game():
             self.current += 1
             if self.current == self.modelSize:
                 best = self.selection()
-                print(best[0].score)
+                print("epoch %s best: %d" % (epoch//self.modelSize, best[0].score))
                 m1_w1_new, m2_w1_new = self.crossOverWeight(best[0].w1, best[1].w1)
-                m1_w2_new, m2_w2_new = self.crossOverWeight(best[0].w1, best[1].w1)
+                m1_w2_new, m2_w2_new = self.crossOverWeight(best[0].w2, best[1].w2)
                 self.saveWeight(m1_w1_new, "w1")
                 self.saveWeight(m1_w2_new, "w2")
                 newmodel = [Model(m1_w1_new, m1_w2_new), Model(m2_w1_new, m2_w2_new)]
                 for i in range(len(newmodel), self.modelSize):
                     newmodel.append(Model(self.mutateWeight(m1_w1_new), self.mutateWeight(m1_w2_new)))
+                self.models = newmodel
                 self.current = 0
     def step(self):        
         self.reward = 0
