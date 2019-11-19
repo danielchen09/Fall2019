@@ -8,7 +8,7 @@ import ai
 class Model:
     def __init__(self, w1=None, w2=None):
         self.inputSize = 4
-        self.hiddenSize = 20
+        self.hiddenSize = 4
         self.outputSize = 1
         self.score = 0
         
@@ -40,13 +40,13 @@ class Game():
         self.fB = fB        # Second program's " "
         self.user = user    # Boolean indicating whether or not to get user input
         self.draw = True
-        self.maxScore = 3
+        self.maxScore = 10
 
-        self.modelSize = 3
-        self.models = [Model()] * self.modelSize
+        self.modelSize = 5
+        self.models = [Model() for i in range(self.modelSize)]
         self.current = 0
         self.epochs = 200
-        self.mutateRate = 0.1
+        self.mutateRate = 0.01
 
     def saveWeight(self, w, name):
         np.savetxt(name + ".txt", w)
@@ -55,7 +55,7 @@ class Game():
         return np.loadtxt(name + ".txt")
 
     def selection(self):
-        return sorted(self.models, key=(lambda m : m.score))[-2:]
+        return sorted(self.models, key=(lambda m : m.score), reverse=True)[:2]
 
     def crossOverWeight(self, w1, w2):
         cut = w1.shape[1]//2
@@ -67,7 +67,7 @@ class Game():
 
     def mutateWeight(self, w):
         mask = np.random.randint(0, 2, size=w.shape).astype(np.bool)
-        rand = np.random.uniform(-1, 1, w.shape)*np.max(w.shape)*self.mutateRate
+        rand = np.random.uniform(-0.1, 0.1, w.shape)*self.mutateRate
         w[mask] = rand[mask]
 
         return w
@@ -89,11 +89,12 @@ class Game():
 
             self.models[self.current].score = self.scoreB
             pygame.quit()
-            print("%s wins!" % self.winner)
+            print("%s wins! %d : %d" % (self.winner, self.scoreA, self.scoreB))
 
             self.current += 1
             if self.current == self.modelSize:
                 best = self.selection()
+                print(best[0].score)
                 m1_w1_new, m2_w1_new = self.crossOverWeight(best[0].w1, best[1].w1)
                 m1_w2_new, m2_w2_new = self.crossOverWeight(best[0].w1, best[1].w1)
                 self.saveWeight(m1_w1_new, "w1")
