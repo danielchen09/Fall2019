@@ -8,23 +8,25 @@ import ai
 class Model:
     def __init__(self, w1=None, w2=None):
         self.inputSize = 4
-        self.hiddenSize = 10
+        self.hiddenSize = 20
         self.outputSize = 1
         self.score = 0
         
-        if w1 == None or w2 == None:
-            self.w1 = np.random.rand(self.hiddenSize, self.inputSize);
-            self.w2 = np.random.rand(self.outputSize, self.hiddenSize)
+        if w1 is None or w2 is None:
+            self.w1 = np.random.uniform(-0.1, 0.1, (self.hiddenSize, self.inputSize))
+            self.w2 = np.random.uniform(-0.1, 0.1, (self.outputSize, self.hiddenSize))
         else:
             self.w1 = w1
             self.w2 = w2
-        
+
     def getAction(self, rgb, paddleA, paddleB, ball, reward, done):
         input = np.array([paddleA.y, paddleB.y, ball.y, ball.x]).reshape(-1, 1)
         hidden_out = self.relu(self.w1 @ input)
         out = self.sigmoid(self.w2 @ hidden_out)
+        out = 5 * (-1 if np.random.uniform(0, 1) > out[0, 0] else 1)
+        print(out)
         return out
-        
+
     def sigmoid(self, x):
         return 1.0/(1+np.exp(-1*x))
 
@@ -41,25 +43,32 @@ class Game():
         self.draw = True
         self.maxScore = 3
 
-        self.modelSize = 2
+        self.modelSize = 3
         self.models = [Model()] * self.modelSize
         self.current = 0
-        self.epochs = 1
+        self.epochs = 200
+        self.mutateRate = 0.1
+
+    def saveWeight(self, w, name):
+        np.savetxt(name + ".txt", w)
+
+    def loadWeight(self, name):
+        return np.loadtxt(name + ".txt")
 
     def selection(self):
         return sorted(self.models, key=(lambda m : m.score))[-2:]
 
     def crossOverWeight(self, w1, w2):
         cut = w1.shape[1]//2
-        temp = np.array(w1[:, :,cut], copy=True)
+        temp = np.array(w1[:, :cut], copy=True)
         w1[:, :cut] = w2[:, :cut]
         w2[:, :cut] = temp
 
         return w1, w2
 
-    def mutateWeight(self, rate, w):
+    def mutateWeight(self, w):
         mask = np.random.randint(0, 2, size=w.shape).astype(np.bool)
-        rand = np.random.rand(*w.shape)*np.max(w.shape)*rate
+        rand = np.random.uniform(-1, 1, w.shape)*np.max(w.shape)*self.mutateRate
         w[mask] = rand[mask]
 
         return w
@@ -77,7 +86,6 @@ class Game():
             while not self.done:
                 if self.scoreB + self.scoreA != last:
                     last = self.scoreB + self.scoreA
-                    print(self.scoreB + self.scoreA)
                 self.step()
 
             self.models[self.current].score = self.scoreB
@@ -86,8 +94,14 @@ class Game():
 
             self.current += 1
             if self.current == self.modelSize:
-                for model in self.models:
-                    print(model.score)
+                best = self.selection()
+                m1_w1_new, m2_w1_new = self.crossOverWeight(best[0].w1, best[1].w1)
+                m1_w2_new, m2_w2_new = self.crossOverWeight(best[0].w1, best[1].w1)
+                self.saveWeight(m1_w1_new, "w1")
+                self.saveWeight(m1_w2_new, "w2")
+                newmodel = [Model(m1_w1_new, m1_w2_new), Model(m2_w1_new, m2_w2_new)]
+                for i in range(len(newmodel), self.modelSize):
+                    newmodel.append(Model(self.mutateWeight(m1_w1_new), self.mutateWeight(m1_w2_new)))
                 self.current = 0
     def step(self):        
         self.reward = 0
