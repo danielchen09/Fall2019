@@ -8,24 +8,28 @@ import ai
 
 class Model:
     def __init__(self, w1=None, w2=None):
-        self.inputSize = 3
-        self.hiddenSize = 2
+        self.inputSize = 8
+        self.hiddenSize = 4
         self.outputSize = 1
         self.score = 0
         self.lastPos = None
 
         if w1 is None or w2 is None:
-            self.w1 = np.random.uniform(-0.1, 0.1, (self.hiddenSize, self.inputSize))
-            self.w2 = np.random.uniform(-0.1, 0.1, (self.outputSize, self.hiddenSize))
+            self.w1 = np.random.uniform(-1e-4, 1e-4, (self.hiddenSize, self.inputSize))
+            self.w2 = np.random.uniform(-1e-4, 1e-4, (self.outputSize, self.hiddenSize))
         else:
             self.w1 = w1
             self.w2 = w2
 
     def getAction(self, rgb, paddleA, paddleB, ball, reward, done):
-        input = np.array([paddleB.y, ball.y, ball.x]).reshape(-1, 1)
+        if self.lastPos is None:
+            self.lastPos = np.array([paddleA.y, paddleB.y, ball.y, ball.x])
+            return 0
+        pos = np.array([paddleA.y, paddleB.y, ball.y, ball.x])
+        input = np.concatenate((pos - self.lastPos, pos)).reshape(-1, 1)
         hidden_out = self.relu(self.w1.dot(input))
         out = self.sigmoid(self.w2.dot(hidden_out))
-        out = 5 * (-1 if np.random.uniform(0, 1) > out[0, 0] else 1)
+        out = 7 * (-1 if out[0, 0] < 0.5 else 1)
         return out
 
     def sigmoid(self, x):
@@ -35,6 +39,8 @@ class Model:
         vector[vector < 0] = 0
         return vector
 
+def copy(a):
+    return np.array(a, copy=True)
 
 class Game():
     def __init__(self, fA, fB, user):
@@ -44,9 +50,10 @@ class Game():
         self.draw = True
         self.maxScore = 5
 
-        self.mutateRate = 1e-4
+        self.mutateRate = 0.5 # of mean
         self.modelSize = 5
-        self.models = [Model() for i in range(self.modelSize)]
+        self.models = [Model(self.loadWeight("w1"), self.loadWeight("w2").reshape(1, -1)) for i in range(self.modelSize)]
+        print(self.models[0].w2.shape)
         self.current = 0
         self.epochs = 200
 
@@ -65,14 +72,17 @@ class Game():
         w1[mask] = w2[mask]
         w2[mask] = temp
 
-        return np.array(w1, copy=True), np.array(w2, copy=True)
+        return copy(w1), copy(w2)
 
     def mutateWeight(self, w):
         mask = np.random.randint(0, 2, size=w.shape).astype(np.bool)
-        rand = np.random.uniform(-1, 1, w.shape) * self.mutateRate
-        w[mask] = rand[mask]
+        rand = np.random.uniform(-1, 1, w.shape) * self.mutateRate * np.mean(w)
+        w[mask] += rand[mask]
 
-        return np.array(w, copy=True)
+        return copy(w)
+
+    def getPopulationScore(self):
+        return sum([m.score for m in self.models])
 
     def runComp(self):
         for epoch in range(self.epochs * self.modelSize):
@@ -87,23 +97,28 @@ class Game():
                     last = self.scoreB + self.scoreA
                 self.step()
 
-            self.models[self.current].score = self.scoreB
+            self.models[self.current].score += self.scoreB * 2
+            # print(np.mean(self.models[self.current].w1), np.mean(self.models[self.current].w2))
+            self.saveWeight(self.models[self.current].w1, "w1")
+            self.saveWeight(self.models[self.current].w2, "w2")
             pygame.quit()
-            print("%s wins! %d : %d" % (self.winner, self.scoreA, self.scoreB))
+            print("%s wins! %d : %d => score : %d" % (self.winner, self.scoreA, self.scoreB, self.models[self.current].score))
 
             self.current += 1
             if self.current == self.modelSize:
                 best = self.selection()
                 print("epoch %s best: %d" % (epoch // self.modelSize, best[0].score))
-                m1_w1_new, m2_w1_new = self.crossOverWeight(best[0].w1, best[1].w1)
-                m1_w2_new, m2_w2_new = self.crossOverWeight(best[0].w2, best[1].w2)
-                self.saveWeight(m1_w1_new, "w1")
-                self.saveWeight(m1_w2_new, "w2")
-                print(np.mean(m1_w1_new), np.mean(m1_w2_new))
-                newmodel = [Model(m1_w1_new, m1_w2_new), Model(m2_w1_new, m2_w2_new)]
-                for i in range(len(newmodel), self.modelSize):
-                    newmodel.append(Model(self.mutateWeight(m1_w1_new), self.mutateWeight(m1_w2_new)))
-                self.models = newmodel
+
+                if self.getPopulationScore() > 5:
+                    m1_w1_new, m2_w1_new = self.crossOverWeight(copy(best[0].w1), copy(best[1].w1))
+                    m1_w2_new, m2_w2_new = self.crossOverWeight(copy(best[0].w2), copy(best[1].w2))
+                    newmodel = [Model(m1_w1_new, m1_w2_new), Model(m2_w1_new, m2_w2_new)]
+                    for i in range(len(newmodel), self.modelSize):
+                        newmodel.append(Model(self.mutateWeight(m1_w1_new), self.mutateWeight(m1_w2_new)))
+                    self.models = newmodel
+                else:
+                    print("regenerating population")
+                    self.models = [Model() for i in range(self.modelSize)]
                 self.current = 0
 
     def step(self):
@@ -168,6 +183,8 @@ class Game():
             self.ball.rect.y = 300
             self.ball.velocity = [2 if randint(0, 1) == 0 else -2, 2 if randint(0, 1) == 0 else -2]
         # Detect collisions between the ball and the paddles
+        if pygame.sprite.collide_mask(self.ball, self.paddleB):
+            self.models[self.current].score += 1
         if pygame.sprite.collide_mask(self.ball, self.paddleA) or pygame.sprite.collide_mask(self.ball, self.paddleB):
             self.ball.bounce()
 
