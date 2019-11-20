@@ -4,10 +4,14 @@ from paddle import Paddle
 from ball import Ball
 import numpy as np
 import ai
+import matplotlib
+matplotlib.use("TkAgg")
+import pylab as plt
+plt.ion()
 
 
 class Model:
-    def __init__(self, w1=None, w2=None):
+    def __init__(self, w1=None, w2=None, b1=None, b2=None):
         self.inputSize = 8
         self.hiddenSize = 4
         self.outputSize = 1
@@ -21,14 +25,22 @@ class Model:
             self.w1 = w1
             self.w2 = w2
 
+        if b1 is None or b2 is None:
+            self.b1 = np.random.uniform(-1e-7, 1e-7, (self.hiddenSize, 1))
+            self.b2 = np.random.uniform(-1e-7, 1e-7, (self.outputSize, 1))
+        else:
+            self.b1 = b1
+            self.b2 = b2
+
+
     def getAction(self, rgb, paddleA, paddleB, ball, reward, done):
         if self.lastPos is None:
             self.lastPos = np.array([paddleA.y, paddleB.y, ball.y, ball.x])
             return 0
         pos = np.array([paddleA.y, paddleB.y, ball.y, ball.x])
         input = np.concatenate((pos - self.lastPos, pos)).reshape(-1, 1)
-        hidden_out = self.relu(self.w1.dot(input))
-        out = self.sigmoid(self.w2.dot(hidden_out))
+        hidden_out = self.relu(self.w1.dot(input) + self.b1)
+        out = self.sigmoid(self.w2.dot(hidden_out) + self.b2)
         out = 7 * (-1 if out[0, 0] < 0.5 else 1)
         return out
 
@@ -48,14 +60,26 @@ class Game():
         self.fB = fB  # Second program's " "
         self.user = user  # Boolean indicating whether or not to get user input
         self.draw = True
-        self.maxScore = 5
+        self.maxScore = 10
 
         self.mutateRate = 0.5 # of mean
         self.modelSize = 5
-        self.models = [Model(self.loadWeight("w1"), self.loadWeight("w2").reshape(1, -1)) for i in range(self.modelSize)]
-        print(self.models[0].w2.shape)
+        self.models = [Model(self.loadWeight("w1_5"),
+                             self.loadWeight("w2_5").reshape(1, -1),
+                             self.loadWeight("b1_5").reshape(-1, 1),
+                             self.loadWeight("b2_5").reshape(1, 1)) for i in range(self.modelSize)]
         self.current = 0
-        self.epochs = 200
+        self.epochs = 1000
+
+        self.fig = plt.figure()
+        self.ax = self.fig.add_subplot(111)
+        self.history = [-1]
+        self.index = [-1]
+        self.line, = self.ax.plot(self.index, self.history, 'r-')
+        self.ax.set_xlim([0, 1])
+        self.ax.set_ylim([0, 1])
+        plt.draw()
+        plt.pause(0.01)
 
     def saveWeight(self, w, name):
         np.savetxt(name + ".txt", w)
@@ -67,7 +91,12 @@ class Game():
         return sorted(self.models, key=(lambda m: m.score), reverse=True)[:2]
 
     def crossOverWeight(self, w1, w2):
-        mask = np.random.randint(0, 2, size=(w1.shape)).astype(np.bool)
+        # mask = np.random.randint(0, 2, size=(w1.shape)).astype(np.bool)
+        rate = 0.2
+        totalSize = np.product(w1.shape)
+        dist = np.array([1] * int(totalSize * rate) + [0] * (totalSize - int(totalSize * rate)))
+        np.random.shuffle(dist)
+        mask = dist.reshape(w1.shape)
         temp = np.array(w1[mask], copy=True)
         w1[mask] = w2[mask]
         w2[mask] = temp
@@ -75,7 +104,12 @@ class Game():
         return copy(w1), copy(w2)
 
     def mutateWeight(self, w):
-        mask = np.random.randint(0, 2, size=w.shape).astype(np.bool)
+        # mask = np.random.randint(0, 2, size=w.shape).astype(np.bool)
+        rate = 0.2
+        totalSize = np.product(w.shape)
+        dist = np.array([1] * int(totalSize * rate) + [0] * (totalSize - int(totalSize * rate)))
+        np.random.shuffle(dist)
+        mask = dist.reshape(w.shape)
         rand = np.random.uniform(-1, 1, w.shape) * self.mutateRate * np.mean(w)
         w[mask] += rand[mask]
 
@@ -97,24 +131,48 @@ class Game():
                     last = self.scoreB + self.scoreA
                 self.step()
 
+            if self.scoreB >= 5:
+                self.saveWeight(self.models[self.current].w1, "w1_5")
+                self.saveWeight(self.models[self.current].w2, "w2_5")
+                self.saveWeight(self.models[self.current].b1, "b1_5")
+                self.saveWeight(self.models[self.current].b2, "b2_5")
+
             self.models[self.current].score += self.scoreB * 2
             # print(np.mean(self.models[self.current].w1), np.mean(self.models[self.current].w2))
             self.saveWeight(self.models[self.current].w1, "w1")
             self.saveWeight(self.models[self.current].w2, "w2")
+            self.saveWeight(self.models[self.current].b1, "b1")
+            self.saveWeight(self.models[self.current].b2, "b2")
             pygame.quit()
             print("%s wins! %d : %d => score : %d" % (self.winner, self.scoreA, self.scoreB, self.models[self.current].score))
 
             self.current += 1
             if self.current == self.modelSize:
+                self.history.append(np.mean(np.array([m.score for m in self.models])))
+                self.index.append(epoch // self.modelSize)
+                self.line.set_xdata(self.index)
+                self.line.set_ydata(self.history)
+                self.ax.set_xlim(0, self.index[-1])
+                self.ax.set_ylim(0, max(self.history) + 1)
+                plt.draw()
+                plt.pause(0.01)
+
+
                 best = self.selection()
                 print("epoch %s best: %d" % (epoch // self.modelSize, best[0].score))
 
-                if self.getPopulationScore() > 5:
+                if self.getPopulationScore() > 10:
                     m1_w1_new, m2_w1_new = self.crossOverWeight(copy(best[0].w1), copy(best[1].w1))
                     m1_w2_new, m2_w2_new = self.crossOverWeight(copy(best[0].w2), copy(best[1].w2))
-                    newmodel = [Model(m1_w1_new, m1_w2_new), Model(m2_w1_new, m2_w2_new)]
+                    m1_b1_new, m2_b1_new = self.crossOverWeight(copy(best[0].b1), copy(best[1].b1))
+                    m1_b2_new, m2_b2_new = self.crossOverWeight(copy(best[0].b2), copy(best[0].b2))
+                    newmodel = [Model(m1_w1_new, m1_w2_new, m1_b1_new, m1_b2_new),
+                                Model(m2_w1_new, m2_w2_new, m2_b1_new, m2_b2_new)]
                     for i in range(len(newmodel), self.modelSize):
-                        newmodel.append(Model(self.mutateWeight(m1_w1_new), self.mutateWeight(m1_w2_new)))
+                        newmodel.append(Model(self.mutateWeight(m1_w1_new),
+                                              self.mutateWeight(m1_w2_new),
+                                              self.mutateWeight(m1_b1_new),
+                                              self.mutateWeight(m1_b2_new)))
                     self.models = newmodel
                 else:
                     print("regenerating population")
