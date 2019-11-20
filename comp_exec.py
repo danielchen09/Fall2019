@@ -72,7 +72,7 @@ class Game():
     def mutateWeight(self, w):
         mask = np.random.randint(0, 2, size=w.shape).astype(np.bool)
         rand = np.random.uniform(-1, 1, w.shape) * self.mutateRate * np.mean(w)
-        w[mask] = rand[mask]
+        w[mask] += rand[mask]
 
         return copy(w)
 
