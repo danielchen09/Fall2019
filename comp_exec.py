@@ -15,8 +15,8 @@ class Model:
         self.lastPos = None
 
         if w1 is None or w2 is None:
-            self.w1 = np.random.uniform(-0.1, 0.1, (self.hiddenSize, self.inputSize))
-            self.w2 = np.random.uniform(-0.1, 0.1, (self.outputSize, self.hiddenSize))
+            self.w1 = np.random.uniform(-1e-5, 1e-5, (self.hiddenSize, self.inputSize))
+            self.w2 = np.random.uniform(-1e-5, 1e-5, (self.outputSize, self.hiddenSize))
         else:
             self.w1 = w1
             self.w2 = w2
@@ -46,7 +46,7 @@ class Game():
         self.draw = True
         self.maxScore = 5
 
-        self.mutateRate = 0.1 # of mean
+        self.mutateRate = 1e-7 # of mean
         self.modelSize = 5
         self.models = [Model() for i in range(self.modelSize)]
         self.current = 0
@@ -71,7 +71,7 @@ class Game():
 
     def mutateWeight(self, w):
         mask = np.random.randint(0, 2, size=w.shape).astype(np.bool)
-        rand = np.random.uniform(-1, 1, w.shape) * self.mutateRate * np.mean(w)
+        rand = np.random.uniform(-1, 1, w.shape) * self.mutateRate
         w[mask] += rand[mask]
 
         return copy(w)
