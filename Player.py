@@ -7,19 +7,10 @@ class Player:
         self.score = 0
         self.lastPos = None
 
-        if w1 is None or w2 is None:
-            self.w1 = np.random.uniform(-1e-4, 1e-4, (self.hiddenSize, self.inputSize))
-            self.w2 = np.random.uniform(-1e-4, 1e-4, (self.outputSize, self.hiddenSize))
-        else:
-            self.w1 = w1
-            self.w2 = w2
-
-        if b1 is None or b2 is None:
-            self.b1 = np.random.uniform(-1e-7, 1e-7, (self.hiddenSize, 1))
-            self.b2 = np.random.uniform(-1e-7, 1e-7, (self.outputSize, 1))
-        else:
-            self.b1 = b1
-            self.b2 = b2
+        w1 = self.loadWeight("w1_5")
+        w2 = self.loadWeight("w2_5").reshape(1, -1)
+        b1 = self.loadWeight("b1_5").reshape(-1, 1)
+        b2 = self.loadWeight("b2_5").reshape(-1, 1)
 
 
     def getAction(self, rgb, paddleA, paddleB, ball, reward, done):
@@ -39,3 +30,6 @@ class Player:
     def relu(self, vector):
         vector[vector < 0] = vector[vector < 0] * 0.2
         return vector
+
+    def loadWeight(self, name):
+        return np.loadtxt(name + ".txt")
