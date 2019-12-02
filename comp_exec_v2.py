@@ -259,7 +259,7 @@ class Game():
             font = pygame.font.Font(None, 74)
             text = font.render(str(self.scoreA), 1, self.WHITE)
             self.screen.blit(text, (125, 10))
-            text = font.render(str(self.scoreB), 1, self.WHITE)
+            text = font.render("AI: "+ str(self.scoreB), 1, self.WHITE)
             self.screen.blit(text, (375, 10))
 
         pygame.display.flip()
